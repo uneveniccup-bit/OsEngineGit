@@ -56,8 +56,8 @@ namespace OsEngine.Robots.Grids
             _bollingerDeviation = CreateParameter("Bollinger deviation", 1.0m, 1, 5, 0.1m, "Base");
 
             _linesCount = CreateParameter("Grid lines count", 10, 10, 300, 10, "Grid");
-            _linesStep = CreateParameter("Grid lines step", 0.05m, 1, 2, 0.1m, "Grid");
-            _profitValue = CreateParameter("Profit (points)", 0.05m, 1, 2, 0.1m, "Grid");
+            _linesStep = CreateParameter("Grid lines step", 25.0m, 1, 2, 0.1m, "Grid");
+            _profitValue = CreateParameter("Profit (points)", 25.0m, 1, 2, 0.1m, "Grid");
             _volumeType = CreateParameter("Volume type", "Contracts", new[] { "Contracts", "Contract currency", "Deposit percent" }, "Grid");
             _volume = CreateParameter("Volume on one line", 1, 1.0m, 50, 4, "Grid");
             _tradeAssetInPortfolio = CreateParameter("Asset in portfolio", "Prime", "Grid");

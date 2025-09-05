@@ -341,9 +341,9 @@ namespace OsEngine.OsTrader.Grids
 
         public int MaxClosePositionsInJournal = 100;
 
-        public int MaxOpenOrdersInMarket = 5;
+        public int MaxOpenOrdersInMarket = 10;
 
-        public int MaxCloseOrdersInMarket = 5;
+        public int MaxCloseOrdersInMarket = 10;
 
         public int DelayInReal = 500;
 
