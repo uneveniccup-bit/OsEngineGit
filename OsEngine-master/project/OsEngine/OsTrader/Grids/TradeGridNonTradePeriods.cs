@@ -18,18 +18,18 @@ namespace OsEngine.OsTrader.Grids
         {
             NonTradePeriod1Start = new TimeOfDay();
 
-            NonTradePeriod1End = new TimeOfDay() { Hour = 7, Minute = 0 };
+            NonTradePeriod1End = new TimeOfDay() { Hour = 9, Minute = 0 };
 
-            NonTradePeriod2Start = new TimeOfDay() { Hour = 9, Minute = 0 };
-            NonTradePeriod2End = new TimeOfDay() { Hour = 10, Minute = 5 };
+            NonTradePeriod2Start = new TimeOfDay() { Hour = 9, Minute = 50 };
+            NonTradePeriod2End = new TimeOfDay() { Hour = 10, Minute = 0 };
 
-            NonTradePeriod3Start = new TimeOfDay() { Hour = 13, Minute = 54 };
-            NonTradePeriod3End = new TimeOfDay() { Hour = 14, Minute = 6 };
+            NonTradePeriod3Start = new TimeOfDay() { Hour = 13, Minute = 59 };
+            NonTradePeriod3End = new TimeOfDay() { Hour = 14, Minute = 5 };
 
-            NonTradePeriod4Start = new TimeOfDay() { Hour = 18, Minute = 40 };
+            NonTradePeriod4Start = new TimeOfDay() { Hour = 18, Minute = 49 };
             NonTradePeriod4End = new TimeOfDay() { Hour = 19, Minute = 5 };
 
-            NonTradePeriod5Start = new TimeOfDay() { Hour = 23, Minute = 40 };
+            NonTradePeriod5Start = new TimeOfDay() { Hour = 23, Minute = 49 };
             NonTradePeriod5End = new TimeOfDay() { Hour = 23, Minute = 59 };
 
         }
@@ -37,27 +37,27 @@ namespace OsEngine.OsTrader.Grids
         public bool NonTradePeriod1OnOff;
         public TimeOfDay NonTradePeriod1Start;
         public TimeOfDay NonTradePeriod1End;
-        public TradeGridRegime NonTradePeriod1Regime = TradeGridRegime.Off; 
+        public TradeGridRegime NonTradePeriod1Regime = TradeGridRegime.On; 
 
         public bool NonTradePeriod2OnOff;
         public TimeOfDay NonTradePeriod2Start;
         public TimeOfDay NonTradePeriod2End;
-        public TradeGridRegime NonTradePeriod2Regime = TradeGridRegime.Off;
+        public TradeGridRegime NonTradePeriod2Regime = TradeGridRegime.On;
 
         public bool NonTradePeriod3OnOff;
         public TimeOfDay NonTradePeriod3Start;
         public TimeOfDay NonTradePeriod3End;
-        public TradeGridRegime NonTradePeriod3Regime = TradeGridRegime.Off;
+        public TradeGridRegime NonTradePeriod3Regime = TradeGridRegime.On;
 
         public bool NonTradePeriod4OnOff;
         public TimeOfDay NonTradePeriod4Start;
         public TimeOfDay NonTradePeriod4End;
-        public TradeGridRegime NonTradePeriod4Regime = TradeGridRegime.Off;
+        public TradeGridRegime NonTradePeriod4Regime = TradeGridRegime.On;
 
         public bool NonTradePeriod5OnOff;
         public TimeOfDay NonTradePeriod5Start;
         public TimeOfDay NonTradePeriod5End;
-        public TradeGridRegime NonTradePeriod5Regime = TradeGridRegime.Off;
+        public TradeGridRegime NonTradePeriod5Regime = TradeGridRegime.On;
 
         public string GetSaveString()
         {
