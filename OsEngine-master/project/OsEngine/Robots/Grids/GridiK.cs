@@ -85,7 +85,7 @@ namespace OsEngine.Robots.Grids
 
         public override string GetNameStrategyType()
         {
-            return "GridBollinger";
+            return "GridiK";
         }
 
         public override void ShowIndividualSettingsDialog()

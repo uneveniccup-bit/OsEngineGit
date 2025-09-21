@@ -20,16 +20,6 @@ namespace OsEngine.Market.SupportTable
 
             // TODO Добавить Finam gRPC
 
-            SupportConnection quikDDE = new SupportConnection()
-            {
-                ServerType = ServerType.QuikDde,
-                SupportType = SupportServerType.Prime,
-                LinqToLogo = "\\Images\\Connections\\Moex\\QuikDde.png",
-                LingSiteUrl = "",
-                Discount = 0
-            };
-            supportList.Add(quikDDE);
-
             SupportConnection transaq = new SupportConnection()
             {
                 ServerType = ServerType.Transaq,
@@ -187,16 +177,6 @@ namespace OsEngine.Market.SupportTable
                 Discount = 0
             };
             supportList.Add(ninja);
-
-            SupportConnection lmax = new SupportConnection()
-            {
-                ServerType = ServerType.Lmax,
-                SupportType = SupportServerType.No,
-                LinqToLogo = "\\Images\\Connections\\International\\Lmax.png",
-                LingSiteUrl = "",
-                Discount = 0
-            };
-            supportList.Add(lmax);
 
             return supportList;
         }
@@ -408,7 +388,7 @@ namespace OsEngine.Market.SupportTable
 
             SupportConnection exMo = new SupportConnection()
             {
-                ServerType = ServerType.Exmo,
+                ServerType = ServerType.ExmoSpot,
                 SupportType = SupportServerType.No,
                 LinqToLogo = "\\Images\\Connections\\Crypto\\Exmo.png",
                 LingSiteUrl = "",

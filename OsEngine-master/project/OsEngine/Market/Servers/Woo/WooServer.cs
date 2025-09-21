@@ -3,7 +3,6 @@
  *Ваши права на использование кода регулируются данной лицензией http://o-s-a.net/doc/license_simple_engine.pdf
 */
 
-
 using Newtonsoft.Json;
 using OsEngine.Entity;
 using OsEngine.Entity.WebSocketOsEngine;
@@ -34,6 +33,7 @@ namespace OsEngine.Market.Servers.Woo
             CreateParameterPassword(OsLocalization.Market.ServerParameterSecretKey, "");
             CreateParameterString("Application ID", "");
             CreateParameterBoolean("Hedge Mode", true);
+            CreateParameterBoolean("Extended Data", false);
             ServerParameters[3].ValueChange += WooServer_ValueChange;
         }
 
@@ -80,6 +80,15 @@ namespace OsEngine.Market.Servers.Woo
             {
                 SendLogMessage("Can`t run WooX connector. No keys or appID", LogMessageType.Error);
                 return;
+            }
+
+            if (((ServerParameterBool)ServerParameters[4]).Value == true)
+            {
+                _extendedMarketData = true;
+            }
+            else
+            {
+                _extendedMarketData = false;
             }
 
             try
@@ -243,7 +252,7 @@ namespace OsEngine.Market.Servers.Woo
                         else
                         {
                             SendLogMessage($"Position mode error. {responseMessage.Content}", LogMessageType.Error);
-                        }    
+                        }
                     }
                 }
                 else
@@ -255,7 +264,7 @@ namespace OsEngine.Market.Servers.Woo
                     else
                     {
                         SendLogMessage($"Position mode request error. Code: {responseMessage.StatusCode}, {responseMessage.Content}", LogMessageType.Error);
-                    }    
+                    }
                 }
             }
             catch (Exception ex)
@@ -270,12 +279,16 @@ namespace OsEngine.Market.Servers.Woo
 
         private List<Security> _securities;
 
+        private RateGate _rateGateSecurities = new RateGate(1, TimeSpan.FromMilliseconds(100));
+
         public void GetSecurities()
         {
             if (_securities == null)
             {
                 _securities = new List<Security>();
             }
+
+            _rateGateSecurities.WaitToProceed();
 
             try
             {
@@ -294,38 +307,42 @@ namespace OsEngine.Market.Servers.Woo
                         {
                             RowSymbols item = response.data.rows[i];
 
-                            if (item.status == "TRADING")
+                            if (item.status != "TRADING"
+                                || (item.minNotional == "0"
+                                && item.baseMin == "0"))
                             {
-                                Security newSecurity = new Security();
-
-                                newSecurity.Exchange = ServerType.Woo.ToString();
-                                newSecurity.Name = item.symbol;
-                                newSecurity.NameFull = item.symbol;
-                                newSecurity.NameClass = item.symbol.StartsWith("SPOT") ? "Spot_" + item.quoteAsset : "Futures_" + item.quoteAsset;
-                                newSecurity.NameId = item.symbol;
-                                newSecurity.SecurityType = item.symbol.StartsWith("SPOT") ? SecurityType.CurrencyPair : SecurityType.Futures;
-                                newSecurity.DecimalsVolume = item.baseTick.DecimalsCount();
-                                newSecurity.Lot = 1;
-                                newSecurity.PriceStep = item.quoteTick.ToDecimal();
-                                newSecurity.Decimals = item.quoteTick.DecimalsCount();
-                                newSecurity.PriceStepCost = newSecurity.PriceStep;
-                                newSecurity.State = SecurityStateType.Activ;
-
-                                if (item.symbol.StartsWith("SPOT"))
-                                {
-                                    newSecurity.MinTradeAmountType = MinTradeAmountType.C_Currency;
-                                    newSecurity.MinTradeAmount = item.minNotional.ToDecimal();
-                                }
-                                else
-                                {
-                                    newSecurity.MinTradeAmountType = MinTradeAmountType.Contract;
-                                    newSecurity.MinTradeAmount = item.baseMin.ToDecimal();
-                                }
-
-                                newSecurity.VolumeStep = item.baseTick.ToDecimal();
-
-                                _securities.Add(newSecurity);
+                                continue;
                             }
+
+                            Security newSecurity = new Security();
+
+                            newSecurity.Exchange = ServerType.Woo.ToString();
+                            newSecurity.Name = item.symbol;
+                            newSecurity.NameFull = item.symbol;
+                            newSecurity.NameClass = item.symbol.StartsWith("SPOT") ? "Spot_" + item.quoteAsset : "Futures_" + item.quoteAsset;
+                            newSecurity.NameId = item.symbol;
+                            newSecurity.SecurityType = item.symbol.StartsWith("SPOT") ? SecurityType.CurrencyPair : SecurityType.Futures;
+                            newSecurity.DecimalsVolume = item.baseTick.DecimalsCount();
+                            newSecurity.Lot = 1;
+                            newSecurity.PriceStep = item.quoteTick.ToDecimal();
+                            newSecurity.Decimals = item.quoteTick.DecimalsCount();
+                            newSecurity.PriceStepCost = newSecurity.PriceStep;
+                            newSecurity.State = SecurityStateType.Activ;
+
+                            if (item.minNotional != "0")
+                            {
+                                newSecurity.MinTradeAmountType = MinTradeAmountType.C_Currency;
+                                newSecurity.MinTradeAmount = item.minNotional.ToDecimal();
+                            }
+                            else
+                            {
+                                newSecurity.MinTradeAmountType = MinTradeAmountType.Contract;
+                                newSecurity.MinTradeAmount = item.baseMin.ToDecimal();
+                            }
+
+                            newSecurity.VolumeStep = item.baseTick.ToDecimal();
+
+                            _securities.Add(newSecurity);
                         }
 
                         SecurityEvent(_securities);
@@ -360,6 +377,7 @@ namespace OsEngine.Market.Servers.Woo
         {
             CreateACommonPortfolio();
             CreateQueryPortfolio(true);
+            CreateFuturesPositions();
         }
 
         private void CreateACommonPortfolio()
@@ -382,8 +400,8 @@ namespace OsEngine.Market.Servers.Woo
 
                         Portfolio portfolio = new Portfolio();
                         portfolio.Number = "WooPortfolio";
-                        portfolio.ValueBegin = response.data.totalAccountValue.ToDecimal();
-                        portfolio.ValueCurrent = response.data.totalTradingValue.ToDecimal();
+                        portfolio.ValueBegin = Math.Round(response.data.totalAccountValue.ToDecimal(), 5);
+                        portfolio.ValueCurrent = Math.Round(response.data.totalTradingValue.ToDecimal(), 5);
                         _portfolios.Add(portfolio);
 
                         PortfolioEvent(_portfolios);
@@ -404,9 +422,11 @@ namespace OsEngine.Market.Servers.Woo
             }
         }
 
+        private RateGate _rateGateBalance = new RateGate(1, TimeSpan.FromMilliseconds(100));
+
         private void CreateQueryPortfolio(bool IsUpdateValueBegin)
         {
-            _rateGatePortfolio.WaitToProceed();
+            _rateGateBalance.WaitToProceed();
 
             try
             {
@@ -430,14 +450,66 @@ namespace OsEngine.Market.Servers.Woo
 
                             pos.PortfolioName = "WooPortfolio";
                             pos.SecurityNameCode = balanceDetails.token;
-                            pos.ValueBlocked = balanceDetails.frozen.ToDecimal();
-                            pos.ValueCurrent = balanceDetails.holding.ToDecimal();
-                            pos.UnrealizedPnl = balanceDetails.pnl24H.ToDecimal();
+                            pos.ValueBlocked = Math.Round(balanceDetails.frozen.ToDecimal(), 5);
+                            pos.ValueCurrent = Math.Round(balanceDetails.holding.ToDecimal(), 5);
+                            pos.UnrealizedPnl = Math.Round(balanceDetails.pnl24H.ToDecimal(), 5);
 
                             if (IsUpdateValueBegin)
                             {
-                                pos.ValueBegin = balanceDetails.holding.ToDecimal();
+                                pos.ValueBegin = Math.Round(balanceDetails.holding.ToDecimal(), 5);
                             }
+
+                            portfolio.SetNewPosition(pos);
+                        }
+
+                        PortfolioEvent(_portfolios);
+                    }
+                    else
+                    {
+                        SendLogMessage($"Portfolio error. {responseMessage.Content}", LogMessageType.Error);
+                    }
+                }
+                else
+                {
+                    SendLogMessage($"Portfolio request error. Code: {responseMessage.StatusCode}, {responseMessage.Content}", LogMessageType.Error);
+                }
+            }
+            catch (Exception exception)
+            {
+                SendLogMessage(exception.ToString(), LogMessageType.Error);
+            }
+        }
+
+        private RateGate _rateGateFuturesPosition = new RateGate(3, TimeSpan.FromMilliseconds(1000));
+
+        private void CreateFuturesPositions()
+        {
+            _rateGateFuturesPosition.WaitToProceed();
+
+            try
+            {
+                string requestPath = "/v3/futures/positions";
+
+                IRestResponse responseMessage = CreatePrivateQuery(requestPath, Method.GET);
+
+                if (responseMessage.StatusCode == System.Net.HttpStatusCode.OK)
+                {
+                    ResponseMessageRest<ResponseFuturesPositions> response = JsonConvert.DeserializeObject<ResponseMessageRest<ResponseFuturesPositions>>(responseMessage.Content);
+
+                    if (response.success == "true")
+                    {
+                        Portfolio portfolio = _portfolios[0];
+
+                        for (int i = 0; i < response.data.positions.Count; i++)
+                        {
+                            FuturesPosition balanceDetails = response.data.positions[i];
+
+                            PositionOnBoard pos = new PositionOnBoard();
+
+                            pos.PortfolioName = "WooPortfolio";
+                            pos.SecurityNameCode = balanceDetails.symbol;
+                            pos.ValueCurrent = balanceDetails.holding.ToDecimal();
+                            pos.UnrealizedPnl = balanceDetails.pnl24H.ToDecimal();
 
                             portfolio.SetNewPosition(pos);
                         }
@@ -515,7 +587,6 @@ namespace OsEngine.Market.Servers.Woo
                 Candle last = candles[candles.Count - 1];
 
                 if (last.TimeStart >= endTime)
-
                 {
                     for (int i = 0; i < candles.Count; i++)
                     {
@@ -529,7 +600,7 @@ namespace OsEngine.Market.Servers.Woo
 
                 allCandles.AddRange(candles);
 
-                startTimeData = startTimeData.AddMinutes(tfTotalMinutes * 100);
+                startTimeData = startTimeData.AddMinutes(tfTotalMinutes * 1000);
 
                 if (startTimeData >= DateTime.UtcNow)
                 {
@@ -538,15 +609,33 @@ namespace OsEngine.Market.Servers.Woo
 
             } while (true);
 
+            for (int i = 0; i < allCandles.Count; i++)
+            {
+                if (allCandles[i].TimeStart > endTime)
+                {
+                    allCandles.RemoveAt(i);
+                    i--;
+                }
+            }
+
+            for (int i = 1; i < allCandles.Count; i++)
+            {
+                if (allCandles[i - 1].TimeStart >= allCandles[i].TimeStart)
+                {
+                    allCandles.RemoveAt(i);
+                    i--;
+                }
+            }
+
             return allCandles;
         }
 
         private bool CheckTime(DateTime startTime, DateTime endTime, DateTime actualTime)
         {
-            if (startTime >= endTime ||
-                startTime >= DateTime.UtcNow ||
-                actualTime > endTime ||
-                actualTime > DateTime.UtcNow)
+            if (startTime >= endTime
+                || startTime >= DateTime.UtcNow
+                || actualTime > endTime
+                || actualTime > DateTime.UtcNow)
             {
                 return false;
             }
@@ -585,17 +674,17 @@ namespace OsEngine.Market.Servers.Woo
             }
         }
 
-        private readonly RateGate _rgCandleData = new RateGate(1, TimeSpan.FromMilliseconds(100));
+        private RateGate _rateGateCandleData = new RateGate(1, TimeSpan.FromMilliseconds(100));
 
         private List<Candle> RequestCandleHistory(string security, string resolution, long fromTimeStamp)
         {
-            _rgCandleData.WaitToProceed();
+            _rateGateCandleData.WaitToProceed();
 
             try
             {
                 string queryParam = $"after={fromTimeStamp}&";
                 queryParam += $"symbol={security}&";
-                queryParam += $"limit=100&";
+                queryParam += $"limit=1000&";
                 queryParam += $"type={resolution}";
 
                 string url = $"{_baseUrl}/v3/public/klineHistory?" + queryParam;
@@ -656,10 +745,11 @@ namespace OsEngine.Market.Servers.Woo
 
         private bool CheckCandlesToZeroData(RowCandles item)
         {
-            if (item.close.ToDecimal() == 0 ||
-                item.open.ToDecimal() == 0 ||
-                item.high.ToDecimal() == 0 ||
-                item.low.ToDecimal() == 0)
+            if (item.close.ToDecimal() == 0
+                || item.open.ToDecimal() == 0
+                || item.high.ToDecimal() == 0
+                || item.low.ToDecimal() == 0
+                || item.volume.ToDecimal() == 0)
             {
                 return true;
             }
@@ -718,7 +808,7 @@ namespace OsEngine.Market.Servers.Woo
                 webSocketPublicNew.OnMessage += WebSocketPublicNew_OnMessage;
                 webSocketPublicNew.OnError += WebSocketPublicNew_OnError;
                 webSocketPublicNew.OnClose += WebSocketPublicNew_OnClose;
-                webSocketPublicNew.Connect();
+                webSocketPublicNew.ConnectAsync();
 
                 return webSocketPublicNew;
             }
@@ -760,7 +850,7 @@ namespace OsEngine.Market.Servers.Woo
                 _webSocketPrivate.OnClose += _webSocketPrivate_OnClose;
                 _webSocketPrivate.OnMessage += _webSocketPrivate_OnMessage;
                 _webSocketPrivate.OnError += _webSocketPrivate_OnError;
-                _webSocketPrivate.Connect();
+                _webSocketPrivate.ConnectAsync();
             }
             catch (Exception exception)
             {
@@ -1049,7 +1139,7 @@ namespace OsEngine.Market.Servers.Woo
                 CheckSocketsActivate();
                 SendLogMessage("BitMartSpot WebSocket Private connection open", LogMessageType.System);
 
-                _webSocketPrivate.Send($"{{\"id\": 1, \"cmd\": \"SUBSCRIBE\", \"params\": [\"account\",\"balance\", \"position\", \"executionreport\"]}}");
+                _webSocketPrivate.SendAsync($"{{\"id\": 1, \"cmd\": \"SUBSCRIBE\", \"params\": [\"account\",\"balance\", \"position\", \"executionreport\"]}}");
             }
             catch (Exception error)
             {
@@ -1083,7 +1173,7 @@ namespace OsEngine.Market.Servers.Woo
                             && webSocketPublic?.ReadyState == WebSocketState.Open)
                         {
                             long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                            webSocketPublic.Send($"{{ \"cmd\": \"PING\", \"ts\": {timestamp} }}");
+                            webSocketPublic.SendAsync($"{{ \"cmd\": \"PING\", \"ts\": {timestamp} }}");
                         }
                         else
                         {
@@ -1096,7 +1186,7 @@ namespace OsEngine.Market.Servers.Woo
                         _webSocketPrivate.ReadyState == WebSocketState.Connecting))
                     {
                         long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                        _webSocketPrivate.Send($"{{ \"cmd\": \"PING\", \"ts\": {timestamp} }}");
+                        _webSocketPrivate.SendAsync($"{{ \"cmd\": \"PING\", \"ts\": {timestamp} }}");
                     }
                     else
                     {
@@ -1145,17 +1235,11 @@ namespace OsEngine.Market.Servers.Woo
                     return;
                 }
 
-                //if (_webSocketPublic.Count >= 20)
-                //{
-                //    //SendLogMessage($"Limit 20 connections {_webSocketPublic.Count}", LogMessageType.Error);
-                //    return;
-                //}
-
                 WebSocket webSocketPublic = _webSocketPublic[_webSocketPublic.Count - 1];
 
                 if (webSocketPublic.ReadyState == WebSocketState.Open
                     && _subscribedSecurities.Count != 0
-                    && _subscribedSecurities.Count % 50 == 0)
+                    && _subscribedSecurities.Count % 20 == 0)
                 {
                     // creating a new socket
                     WebSocket newSocket = CreateNewPublicSocket();
@@ -1181,8 +1265,17 @@ namespace OsEngine.Market.Servers.Woo
 
                 if (webSocketPublic != null)
                 {
-                    webSocketPublic.Send($"{{\"id\": 1, \"cmd\": \"SUBSCRIBE\", \"params\": [\"trade@{security.Name}\"]}}");
-                    webSocketPublic.Send($"{{\"id\": 1, \"cmd\": \"SUBSCRIBE\", \"params\": [\"orderbookupdate@{security.Name}@50\"]}}");
+                    webSocketPublic.SendAsync($"{{\"id\": 1, \"cmd\": \"SUBSCRIBE\", \"params\": [\"trade@{security.Name}\"]}}");
+                    webSocketPublic.SendAsync($"{{\"id\": 1, \"cmd\": \"SUBSCRIBE\", \"params\": [\"orderbookupdate@{security.Name}@50\"]}}");
+
+                    if (_extendedMarketData)
+                    {
+                        webSocketPublic.SendAsync($"{{\"id\": 1, \"cmd\": \"SUBSCRIBE\", \"params\": [\"ticker@{security.Name}\"]}}");
+                        webSocketPublic.SendAsync($"{{\"id\": 1, \"cmd\": \"SUBSCRIBE\", \"params\": [\"estfundingrate@{security.Name}\"]}}");
+                        webSocketPublic.SendAsync($"{{\"id\": 1, \"cmd\": \"SUBSCRIBE\", \"params\": [\"openinterest@{security.Name}\"]}}");
+                        GetFundingData(security.Name);
+                        GetFundingHistory(security.Name);
+                    }
                 }
             }
             catch (Exception exception)
@@ -1191,6 +1284,118 @@ namespace OsEngine.Market.Servers.Woo
             }
         }
 
+        private RateGate _rateGateFundingData = new RateGate(1, TimeSpan.FromMilliseconds(100));
+
+        private void GetFundingData(string security)
+        {
+            _rateGateFundingData.WaitToProceed();
+
+            try
+            {
+                string queryParam = $"symbol={security}";
+
+                string url = $"{_baseUrl}/v3/public/fundingRate?" + queryParam;
+                RestClient client = new RestClient(url);
+                RestRequest request = new RestRequest(Method.GET);
+                IRestResponse responseMessage = client.Execute(request);
+
+                if (responseMessage.StatusCode == System.Net.HttpStatusCode.OK)
+                {
+                    ResponseMessageRest<EstimatedFundingRateData> response = JsonConvert.DeserializeObject<ResponseMessageRest<EstimatedFundingRateData>>(responseMessage.Content);
+
+                    if (response.success == "true")
+                    {
+                        EstimatedFundingRateRow item = response.data.rows[0];
+
+                        Funding data = new Funding();
+
+                        data.SecurityNameCode = item.symbol;
+                        data.FundingIntervalHours = int.Parse(item.estFundingIntervalHours);
+
+                        FundingUpdateEvent?.Invoke(data);
+                    }
+                    else
+                    {
+                        SendLogMessage($"FundingHistory error. Code:{responseMessage.Content}", LogMessageType.Error);
+                    }
+                }
+                else
+                {
+                    SendLogMessage($"FundingHistory error. Code: {responseMessage.StatusCode} || msg: {responseMessage.Content}", LogMessageType.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                SendLogMessage($"{ex.Message} {ex.StackTrace}", LogMessageType.Error);
+            }
+        }
+
+        private RateGate _rateGateFundingHistory = new RateGate(1, TimeSpan.FromMilliseconds(100));
+
+        private void GetFundingHistory(string security)
+        {
+            _rateGateFundingHistory.WaitToProceed();
+
+            try
+            {
+                string queryParam = $"symbol={security}";
+
+                string url = $"{_baseUrl}/v3/public/fundingRateHistory?" + queryParam;
+                RestClient client = new RestClient(url);
+                RestRequest request = new RestRequest(Method.GET);
+                IRestResponse responseMessage = client.Execute(request);
+
+                if (responseMessage.StatusCode == System.Net.HttpStatusCode.OK)
+                {
+                    ResponseMessageRest<FundingHistoryData> response = JsonConvert.DeserializeObject<ResponseMessageRest<FundingHistoryData>>(responseMessage.Content);
+
+                    if (response.success == "true")
+                    {
+                        RowFunding item = response.data.rows[0];
+
+                        Funding funding = new Funding();
+
+                        funding.SecurityNameCode = item.symbol;
+                        funding.PreviousFundingTime = TimeManager.GetDateTimeFromTimeStamp((long)item.fundingRateTimestamp.ToDecimal());
+
+                        decimal maxFunding = 0;
+                        decimal minFunding = 10000;
+
+                        for (int i = 0; i < response.data.rows.Count; i++)
+                        {
+                            decimal fundingRate = response.data.rows[i].fundingRate.ToDecimal();
+
+                            if (fundingRate < minFunding)
+                            {
+                                minFunding = fundingRate;
+                            }
+
+                            if (fundingRate > maxFunding)
+                            {
+                                maxFunding = fundingRate;
+                            }
+                        }
+
+                        funding.MinFundingRate = minFunding;
+                        funding.MaxFundingRate = maxFunding;
+
+                        FundingUpdateEvent?.Invoke(funding);
+                    }
+                    else
+                    {
+                        SendLogMessage($"FundingHistory error. Code:{responseMessage.Content}", LogMessageType.Error);
+                    }
+                }
+                else
+                {
+                    SendLogMessage($"FundingHistory error. Code: {responseMessage.StatusCode} || msg: {responseMessage.Content}", LogMessageType.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                SendLogMessage($"{ex.Message} {ex.StackTrace}", LogMessageType.Error);
+            }
+        }
 
         private void UnsubscribeFromAllWebSockets()
         {
@@ -1213,8 +1418,15 @@ namespace OsEngine.Market.Servers.Woo
                                     {
                                         string securityName = _subscribedSecurities[j];
 
-                                        webSocketPublic.Send($"{{\"id\": 1, \"cmd\": \"UN_SUBSCRIBE\", \"params\": [\"trade@{securityName}\"]}}");
-                                        webSocketPublic.Send($"{{\"id\": 1, \"cmd\": \"UN_SUBSCRIBE\", \"params\": [\"orderbookupdate@{securityName}@50\"]}}");
+                                        webSocketPublic.SendAsync($"{{\"id\": 1, \"cmd\": \"UN_SUBSCRIBE\", \"params\": [\"trade@{securityName}\"]}}");
+                                        webSocketPublic.SendAsync($"{{\"id\": 1, \"cmd\": \"UN_SUBSCRIBE\", \"params\": [\"orderbookupdate@{securityName}@50\"]}}");
+
+                                        if (_extendedMarketData)
+                                        {
+                                            webSocketPublic.SendAsync($"{{\"id\": 1, \"cmd\": \"UN_SUBSCRIBE\", \"params\": [\"ticker@{securityName}\"]}}");
+                                            webSocketPublic.SendAsync($"{{\"id\": 1, \"cmd\": \"UN_SUBSCRIBE\", \"params\": [\"estfundingrate@{securityName}\"]}}");
+                                            webSocketPublic.SendAsync($"{{\"id\": 1, \"cmd\": \"UN_SUBSCRIBE\", \"params\": [\"openinterest@{securityName}\"]}}");
+                                        }
                                     }
                                 }
                             }
@@ -1236,7 +1448,7 @@ namespace OsEngine.Market.Servers.Woo
             {
                 try
                 {
-                    _webSocketPrivate.Send($"{{\"id\": 1, \"cmd\": \"UN_SUBSCRIBE\", \"params\": [\"account\",\"balance\", \"position\", \"executionreport\"]}}");
+                    _webSocketPrivate.SendAsync($"{{\"id\": 1, \"cmd\": \"UN_SUBSCRIBE\", \"params\": [\"account\",\"balance\", \"position\", \"executionreport\"]}}");
                 }
                 catch
                 {
@@ -1250,7 +1462,7 @@ namespace OsEngine.Market.Servers.Woo
             return false;
         }
 
-        public event Action<News> NewsEvent;
+        public event Action<News> NewsEvent { add { } remove { } }
 
         #endregion
 
@@ -1308,6 +1520,24 @@ namespace OsEngine.Market.Servers.Woo
                     if (message.Contains("trade"))
                     {
                         UpdateTrade(message);
+                        continue;
+                    }
+
+                    if (message.Contains("ticker"))
+                    {
+                        UpdateTicker(message);
+                        continue;
+                    }
+
+                    if (message.Contains("estfundingrate"))
+                    {
+                        UpdateFundingrate(message);
+                        continue;
+                    }
+
+                    if (message.Contains("openinterest"))
+                    {
+                        UpdateOpeninterest(message);
                         continue;
                     }
 
@@ -1428,6 +1658,12 @@ namespace OsEngine.Market.Servers.Woo
                 trade.Volume = item.sx.ToDecimal();
                 trade.Side = item.sd.Equals("BUY") ? Side.Buy : Side.Sell;
 
+                if (_extendedMarketData
+                    && trade.SecurityNameCode.Contains("PERP"))
+                {
+                    trade.OpenInterest = GetOpenInterest(trade.SecurityNameCode);
+                }
+
                 NewTradesEvent(trade);
             }
             catch (Exception ex)
@@ -1436,9 +1672,72 @@ namespace OsEngine.Market.Servers.Woo
             }
         }
 
-        private List<MarketDepth> _marketDepths = new List<MarketDepth>();
+        private decimal GetOpenInterest(string securityNameCode)
+        {
+            if (_openInterest.Count == 0
+                  || _openInterest == null)
+            {
+                return 0;
+            }
 
-        private DateTime _lastTimeMd = DateTime.MinValue;
+            for (int i = 0; i < _openInterest.Count; i++)
+            {
+                if (_openInterest[i].SecurityName == securityNameCode)
+                {
+                    return _openInterest[i].OpenInterest.ToDecimal();
+                }
+            }
+
+            return 0;
+        }
+
+        private List<OpenInterestData> _openInterest = new List<OpenInterestData>();
+
+        private void UpdateOpeninterest(string message)
+        {
+            try
+            {
+                ResponseWebSocketMessage<OpenInterestItem> responseOI = JsonConvert.DeserializeObject<ResponseWebSocketMessage<OpenInterestItem>>(message);
+
+                if (responseOI == null
+                    || responseOI.data == null)
+                {
+                    return;
+                }
+
+                OpenInterestData openInterest = new OpenInterestData();
+
+                openInterest.SecurityName = responseOI.data.s;
+
+                if (responseOI.data.oi != null)
+                {
+                    openInterest.OpenInterest = responseOI.data.oi;
+
+                    bool isInArray = false;
+
+                    for (int i = 0; i < _openInterest.Count; i++)
+                    {
+                        if (_openInterest[i].SecurityName == openInterest.SecurityName)
+                        {
+                            _openInterest[i].OpenInterest = openInterest.OpenInterest;
+                            isInArray = true;
+                            break;
+                        }
+                    }
+
+                    if (isInArray == false)
+                    {
+                        _openInterest.Add(openInterest);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SendLogMessage($"{ex.Message} {ex.StackTrace}", LogMessageType.Error);
+            }
+        }
+
+        private List<MarketDepth> _marketDepths = new List<MarketDepth>();
 
         private void SnapshotDepth(string nameSecurity)
         {
@@ -1494,7 +1793,7 @@ namespace OsEngine.Market.Servers.Woo
                             }
                         }
 
-                        if (response.data.bids.Count != null)
+                        if (response.data.bids != null)
                         {
                             for (int i = 0; i < response.data.bids.Count; i++)
                             {
@@ -1568,47 +1867,102 @@ namespace OsEngine.Market.Servers.Woo
                     return;
                 }
 
-                if (marketDepth.Asks.Count == 0
-                    || marketDepth.Bids.Count == 0)
+                if (item.asks.Count > 1)
                 {
-                    SnapshotDepth(item.s);
-                    return;
+                    for (int i = 0; i < item.asks.Count; i++)
+                    {
+                        decimal aPrice = item.asks[i][0].ToDecimal();
+                        decimal aAsk = item.asks[i][1].ToDecimal();
+
+                        if (marketDepth.Asks.Exists(a => a.Price == aPrice))
+                        {
+                            if (aAsk == 0)
+                            {
+                                marketDepth.Asks.RemoveAll(a => a.Price == aPrice);
+                            }
+                            else
+                            {
+                                for (int j = 0; j < marketDepth.Asks.Count; j++)
+                                {
+                                    if (marketDepth.Asks[j].Price == aPrice)
+                                    {
+                                        marketDepth.Asks[j].Ask = aAsk;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            MarketDepthLevel marketDepthLevel = new MarketDepthLevel();
+                            marketDepthLevel.Ask = aAsk;
+                            marketDepthLevel.Price = aPrice;
+                            marketDepth.Asks.Add(marketDepthLevel);
+                            marketDepth.Asks.RemoveAll(a => a.Ask == 0);
+                            marketDepth.Bids.RemoveAll(a => a.Price == aPrice && aPrice != 0);
+                            SortAsks(marketDepth.Asks);
+                        }
+                    }
+                }
+
+                if (item.bids.Count > 1)
+                {
+                    for (int i = 0; i < item.bids.Count; i++)
+                    {
+                        decimal bPrice = item.bids[i][0].ToDecimal();
+                        decimal bBid = item.bids[i][1].ToDecimal();
+
+                        if (marketDepth.Bids.Exists(b => b.Price == bPrice))
+                        {
+                            if (bBid == 0)
+                            {
+                                marketDepth.Bids.RemoveAll(b => b.Price == bPrice);
+                            }
+                            else
+                            {
+                                for (int j = 0; j < marketDepth.Bids.Count; j++)
+                                {
+                                    if (marketDepth.Bids[j].Price == bPrice)
+                                    {
+                                        marketDepth.Bids[j].Bid = bBid;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            MarketDepthLevel marketDepthLevel = new MarketDepthLevel();
+                            marketDepthLevel.Bid = bBid;
+                            marketDepthLevel.Price = bPrice;
+                            marketDepth.Bids.Add(marketDepthLevel);
+                            marketDepth.Bids.RemoveAll(a => a.Bid == 0);
+                            marketDepth.Asks.RemoveAll(a => a.Price == bPrice && bPrice != 0);
+                            SortBids(marketDepth.Bids);
+                        }
+                    }
                 }
 
                 marketDepth.Time = TimeManager.GetDateTimeFromTimeStamp(Convert.ToInt64(item.ts));
 
-                if (marketDepth.Time <= _lastTimeMd)
+                if (_lastMdTime != DateTime.MinValue &&
+                    _lastMdTime >= marketDepth.Time)
                 {
-                    _lastTimeMd = _lastTimeMd.AddTicks(1);
-                    marketDepth.Time = _lastTimeMd;
-                }
-                else
-                {
-                    _lastTimeMd = marketDepth.Time;
+                    marketDepth.Time = _lastMdTime.AddTicks(1);
                 }
 
-                _lastTimeMd = marketDepth.Time;
+                _lastMdTime = marketDepth.Time;
 
-                ApplyLevels(item.bids, marketDepth.Bids, isBid: true);
-                ApplyLevels(item.asks, marketDepth.Asks, isBid: false);
 
-                List<MarketDepthLevel> topBids = new List<MarketDepthLevel>();
-
-                for (int i = 0; i < marketDepth.Bids.Count && i < 25; i++)
+                while (marketDepth.Asks.Count > 20)
                 {
-                    topBids.Add(marketDepth.Bids[i]);
+                    marketDepth.Asks.RemoveAt(20);
                 }
 
-                marketDepth.Bids = topBids;
-
-                List<MarketDepthLevel> topAsks = new List<MarketDepthLevel>();
-
-                for (int i = 0; i < marketDepth.Asks.Count && i < 25; i++)
+                while (marketDepth.Bids.Count > 20)
                 {
-                    topAsks.Add(marketDepth.Asks[i]);
+                    marketDepth.Bids.RemoveAt(20);
                 }
-
-                marketDepth.Asks = topAsks;
 
                 if (marketDepth.Bids.Count == 0
                     || marketDepth.Asks.Count == 0)
@@ -1624,60 +1978,96 @@ namespace OsEngine.Market.Servers.Woo
             }
         }
 
-        private void ApplyLevels(List<List<string>> updates, List<MarketDepthLevel> levels, bool isBid)
+        protected void SortBids(List<MarketDepthLevel> levels)
         {
-            for (int i = 0; i < updates.Count; i++)
+            levels.Sort((a, b) =>
             {
-                decimal price = updates[i][0].ToDecimal();
-                decimal size = updates[i][1].ToDecimal();
-
-                MarketDepthLevel existing = levels.Find(x => x.Price == price);
-
-                if (size == 0)
+                if (a.Price > b.Price)
                 {
-                    if (existing != null)
-                    {
-                        levels.Remove(existing);
-                    }
+                    return -1;
+                }
+                else if (a.Price < b.Price)
+                {
+                    return 1;
                 }
                 else
                 {
-                    if (existing != null)
-                    {
-                        if (isBid)
-                        {
-                            existing.Bid = size;
-                        }
-                        else
-                        {
-                            existing.Ask = size;
-                        }
-                    }
-                    else
-                    {
-                        MarketDepthLevel level = new MarketDepthLevel { Price = price };
-
-                        if (isBid)
-                        {
-                            level.Bid = size;
-                        }
-                        else
-                        {
-                            level.Ask = size;
-                        }
-
-                        levels.Add(level);
-                    }
+                    return 0;
                 }
-            }
+            });
+        }
 
-            if (isBid)
+        protected void SortAsks(List<MarketDepthLevel> levels)
+        {
+            levels.Sort((a, b) =>
             {
-                levels.Sort((a, b) => b.Price.CompareTo(a.Price));
+                if (a.Price > b.Price)
+                {
+                    return 1;
+                }
+                else if (a.Price < b.Price)
+                {
+                    return -1;
+                }
+                else
+                {
+                    return 0;
+                }
+            });
+        }
+
+        private DateTime _lastMdTime = DateTime.MinValue;
+
+        private void UpdateFundingrate(string message)
+        {
+            try
+            {
+                ResponseWebSocketMessage<FundingRateData> responseFunding = JsonConvert.DeserializeObject<ResponseWebSocketMessage<FundingRateData>>(message);
+
+                if (responseFunding == null
+                    || responseFunding.data == null)
+                {
+                    return;
+                }
+
+                Funding funding = new Funding();
+
+                funding.SecurityNameCode = responseFunding.data.s;
+                funding.CurrentValue = responseFunding.data.r.ToDecimal() * 100;
+                funding.NextFundingTime = TimeManager.GetDateTimeFromTimeStamp((long)responseFunding.data.ft.ToDecimal());
+                funding.TimeUpdate = TimeManager.GetDateTimeFromTimeStamp((long)responseFunding.ts.ToDecimal());
+
+                FundingUpdateEvent?.Invoke(funding);
             }
-            else
+            catch (Exception ex)
             {
-                levels.Sort((a, b) => a.Price.CompareTo(b.Price));
+                SendLogMessage($"{ex.Message} {ex.StackTrace}", LogMessageType.Error);
+            }
+        }
+
+        private void UpdateTicker(string message)
+        {
+            try
+            {
+                ResponseWebSocketMessage<TickerData> responseTicker = JsonConvert.DeserializeObject<ResponseWebSocketMessage<TickerData>>(message);
+
+                if (responseTicker == null
+                    || responseTicker.data == null)
+                {
+                    return;
+                }
+
+                SecurityVolumes volume = new SecurityVolumes();
+
+                volume.SecurityNameCode = responseTicker.data.s;
+                volume.Volume24h = responseTicker.data.v.ToDecimal();
+                volume.Volume24hUSDT = responseTicker.data.a.ToDecimal();
+
+                Volume24hUpdateEvent?.Invoke(volume);
+            }
+            catch (Exception ex)
+            {
+                SendLogMessage($"{ex.Message} {ex.StackTrace}", LogMessageType.Error);
             }
         }
 
@@ -1694,8 +2084,8 @@ namespace OsEngine.Market.Servers.Woo
 
                 Portfolio portfolio = _portfolios[0];
 
-                portfolio.ValueBegin = responseBalance.data.v.ToDecimal();
-                portfolio.ValueCurrent = responseBalance.data.fc.ToDecimal();
+                portfolio.ValueBegin = Math.Round(responseBalance.data.v.ToDecimal(), 5);
+                portfolio.ValueCurrent = Math.Round(responseBalance.data.fc.ToDecimal(), 5);
                 portfolio.ValueBlocked = responseBalance.data.tc.ToDecimal() - responseBalance.data.fc.ToDecimal();
 
                 PortfolioEvent(_portfolios);
@@ -1722,9 +2112,9 @@ namespace OsEngine.Market.Servers.Woo
 
                     pos.PortfolioName = "WooPortfolio";
                     pos.SecurityNameCode = balanceDetails.t;
-                    pos.ValueBlocked = balanceDetails.f.ToDecimal();
-                    pos.ValueCurrent = balanceDetails.h.ToDecimal();
-                    pos.UnrealizedPnl = balanceDetails.pnl.ToDecimal();
+                    pos.ValueBlocked = Math.Round(balanceDetails.f.ToDecimal(), 5);
+                    pos.ValueCurrent = Math.Round(balanceDetails.h.ToDecimal(), 5);
+                    pos.UnrealizedPnl = Math.Round(balanceDetails.pnl.ToDecimal(), 5);
                     portfolio.SetNewPosition(pos);
                 }
 
@@ -1764,10 +2154,10 @@ namespace OsEngine.Market.Servers.Woo
                     {
                         pos.SecurityNameCode = balanceDetails.s;
                     }
-                    
+
                     pos.ValueBlocked = 0;
-                    pos.ValueCurrent = balanceDetails.h.ToDecimal();
-                    pos.UnrealizedPnl = balanceDetails.pnl.ToDecimal();
+                    pos.ValueCurrent = Math.Round(balanceDetails.h.ToDecimal(), 5);
+                    pos.UnrealizedPnl = Math.Round(balanceDetails.pnl.ToDecimal(), 5);
 
                     portfolio.SetNewPosition(pos);
                 }
@@ -1815,7 +2205,16 @@ namespace OsEngine.Market.Servers.Woo
                 newOrder.SecurityNameCode = item.s;
                 newOrder.TimeCallBack = TimeManager.GetDateTimeFromTimeStamp(long.Parse(item.ts));
                 newOrder.TimeCreate = TimeManager.GetDateTimeFromTimeStamp(long.Parse(item.ts));
-                newOrder.NumberUser = Convert.ToInt32(item.cid);
+
+                try
+                {
+                    newOrder.NumberUser = Convert.ToInt32(item.cid);
+                }
+                catch
+                {
+                    // ignore
+                }
+
                 newOrder.NumberMarket = item.oid.ToString();
                 newOrder.Side = item.sd.Equals("BUY") ? Side.Buy : Side.Sell;
                 newOrder.State = stateType;
@@ -1928,7 +2327,7 @@ namespace OsEngine.Market.Servers.Woo
 
         public event Action<Trade> NewTradesEvent;
 
-        public event Action<OptionMarketDataForConnector> AdditionalMarketDataEvent;
+        public event Action<OptionMarketDataForConnector> AdditionalMarketDataEvent { add { } remove { } }
 
         public event Action<Funding> FundingUpdateEvent;
 
@@ -1952,7 +2351,7 @@ namespace OsEngine.Market.Servers.Woo
 
                 string posSide = "BOTH";
 
-                if (HedgeMode 
+                if (HedgeMode
                     && order.SecurityNameCode.StartsWith("PERP"))
                 {
                     posSide = order.Side == Side.Buy ? "LONG" : "SHORT";
@@ -2180,7 +2579,15 @@ namespace OsEngine.Market.Servers.Woo
                                 return null;
                             }
 
-                            newOrder.NumberUser = Convert.ToInt32(item.clientOrderId);
+                            try
+                            {
+                                newOrder.NumberUser = Convert.ToInt32(item.clientOrderId);
+                            }
+                            catch
+                            {
+                                // ignore
+                            }
+
                             newOrder.NumberMarket = item.orderId;
                             newOrder.Side = item.side.Equals("BUY") ? Side.Buy : Side.Sell;
                             newOrder.State = stateType;
@@ -2233,6 +2640,16 @@ namespace OsEngine.Market.Servers.Woo
             return myOrder.State;
         }
 
+        public List<Order> GetActiveOrders(int startIndex, int count)
+        {
+            return null;
+        }
+
+        public List<Order> GetHistoricalOrders(int startIndex, int count)
+        {
+            return null;
+        }
+
         private RateGate _rateGateGetOrderFromExchange = new RateGate(1, TimeSpan.FromMilliseconds(210));
 
         private Order GetOrderFromExchange(string nameSecurity, string userOrderId, string numberMarket)
@@ -2272,7 +2689,15 @@ namespace OsEngine.Market.Servers.Woo
                             return null;
                         }
 
-                        newOrder.NumberUser = Convert.ToInt32(item.clientOrderId);
+                        try
+                        {
+                            newOrder.NumberUser = Convert.ToInt32(item.clientOrderId);
+                        }
+                        catch
+                        {
+                            // ignore
+                        }
+
                         newOrder.NumberMarket = item.orderId;
                         newOrder.Side = item.side.Equals("BUY") ? Side.Buy : Side.Sell;
                         newOrder.State = stateType;
@@ -2359,7 +2784,6 @@ namespace OsEngine.Market.Servers.Woo
                             {
                                 newTrade.Volume = item.executedQuantity.ToDecimal();
                             }
-
 
                             MyTradeEvent(newTrade);
                         }
@@ -2503,5 +2927,11 @@ namespace OsEngine.Market.Servers.Woo
         public event Action<string, LogMessageType> LogMessageEvent;
 
         #endregion
+    }
+
+    public class OpenInterestData
+    {
+        public string SecurityName { get; set; }
+        public string OpenInterest { get; set; }
     }
 }

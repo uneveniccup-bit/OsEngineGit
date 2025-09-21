@@ -30,9 +30,51 @@ namespace OsEngine.Market
         public ServerMasterPortfoliosPainter()
         {
             ServerMaster.ServerCreateEvent += ServerMaster_ServerCreateEvent;
+            ServerMaster.ServerDeleteEvent += ServerMaster_ServerDeleteEvent;
 
             Task task = new Task(PainterThreadArea);
             task.Start();
+        }
+
+        private void ServerMaster_ServerDeleteEvent(IServer server)
+        {
+            try
+            {
+                server.PortfoliosChangeEvent -= _server_PortfoliosChangeEvent;
+
+                lock (_lockerPortfolio)
+                {
+                    if (_portfolios == null || _portfolios.Count == 0)
+                    {
+                        return;
+                    }
+
+                    if (_portfolios == null)
+                    {
+                        _portfolios = new List<Portfolio>();
+                    }
+
+                    for (int i = 0; i < _portfolios.Count; i++)
+                    {
+                        if (_portfolios[i] == null)
+                        {
+                            continue;
+                        }
+
+                        if (_portfolios[i].ServerType == server.ServerType
+                            && _portfolios[i].ServerUniqueName == server.ServerNameAndPrefix)
+                        {
+                            _portfolios.Remove(_portfolios[i]);
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (Exception error)
+            {
+                SendNewLogMessage(error.ToString(), LogMessageType.Error);
+            }
+            _needToPaintPortfolio = true;
         }
 
         /// <summary>
@@ -199,6 +241,13 @@ namespace OsEngine.Market
                 {
                     for (int i = 0; i < _portfolios.Count; i++)
                     {
+                        if (_portfolios[i] == null)
+                        {
+                            _portfolios.RemoveAt(i);
+                            i--;
+                            continue;
+                        }
+
                         List<Portfolio> portfolios =
                             _portfolios.FindAll(p => 
                             p != null 
@@ -724,7 +773,7 @@ namespace OsEngine.Market
                 {
                     aServer = (AServer)myServer;
                 }
-                catch (Exception ex)
+                catch
                 {
                     return;
                 }

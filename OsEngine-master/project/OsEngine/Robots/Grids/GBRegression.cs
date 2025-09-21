@@ -91,7 +91,7 @@ namespace OsEngine.Robots.Grids
 
         public override string GetNameStrategyType()
         {
-            return "GridBollinger";
+            return "GBRegression";
         }
 
         public override void ShowIndividualSettingsDialog()

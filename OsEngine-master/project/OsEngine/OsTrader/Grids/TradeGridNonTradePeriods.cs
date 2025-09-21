@@ -20,7 +20,7 @@ namespace OsEngine.OsTrader.Grids
 
             NonTradePeriod1End = new TimeOfDay() { Hour = 9, Minute = 0 };
 
-            NonTradePeriod2Start = new TimeOfDay() { Hour = 9, Minute = 50 };
+            NonTradePeriod2Start = new TimeOfDay() { Hour = 9, Minute = 49 };
             NonTradePeriod2End = new TimeOfDay() { Hour = 10, Minute = 0 };
 
             NonTradePeriod3Start = new TimeOfDay() { Hour = 13, Minute = 59 };

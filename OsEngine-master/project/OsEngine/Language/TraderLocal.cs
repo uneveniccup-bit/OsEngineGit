@@ -2092,12 +2092,12 @@ namespace OsEngine.Language
          "Ru:Ограничение_");
 
         public string Label548 => OsLocalization.ConvertToLocString(
-         "Eng:Limit_" +
-         "Ru:Ограничение_");
+         "Eng:Limit. abs_" +
+         "Ru:Ограничение. абс_");
 
         public string Label549 => OsLocalization.ConvertToLocString(
-         "Eng:Step shift_" +
-         "Ru:Шаг сдвига_");
+         "Eng:Step shift. abs_" +
+         "Ru:Шаг сдвига. абс_");
 
         public string Label550 => OsLocalization.ConvertToLocString(
          "Eng:Are you going to remove the Grid? Are you sure?_" +
@@ -2222,6 +2222,50 @@ namespace OsEngine.Language
         public string Label580 => OsLocalization.ConvertToLocString(
         "Eng:Delete all Pairs?_" +
         "Ru:Удалить все пары?_");
+
+        public string Label581 => OsLocalization.ConvertToLocString(
+        "Eng:Мax distance from the price %_" +
+        "Ru:Макс. расстояние от цены %_");
+
+        public string Label582 => OsLocalization.ConvertToLocString(
+        "Eng:Wait after connecting to the server_" +
+        "Ru:Ждать после подключения к коннектору_");
+
+        public string Label583 => OsLocalization.ConvertToLocString(
+        "Eng:Seconds to wait_" +
+        "Ru:Секунд на ожидание_");
+
+        public string Label584 => OsLocalization.ConvertToLocString(
+        "Eng:Clients_" +
+        "Ru:Клиенты_");
+
+        public string Label585 => OsLocalization.ConvertToLocString(
+        "Eng:Connectors_" +
+        "Ru:Коннекторы_");
+
+        public string Label586 => OsLocalization.ConvertToLocString(
+        "Eng:Portfolios_" +
+        "Ru:Портфели_");
+
+        public string Label587 => OsLocalization.ConvertToLocString(
+        "Eng:Robots_" +
+        "Ru:Роботы_");
+
+        public string Label588 => OsLocalization.ConvertToLocString(
+        "Eng:Deploy_" +
+        "Ru:Развернуть_");
+
+        public string Label589 => OsLocalization.ConvertToLocString(
+        "Eng:Add new_" +
+        "Ru:Добавить_");
+
+        public string Label590 => OsLocalization.ConvertToLocString(
+        "Eng:Are you going to delete the client? The data cannot be recovered! Are you sure?_" +
+        "Ru:Вы собираетесь удалить клиента? Данные нельзя будет восстановить! Вы уверены?_");
+
+        public string Label591 => OsLocalization.ConvertToLocString(
+        "Eng:Client robots management_" +
+        "Ru:Управление роботами клиентов_");
 
     }
 }

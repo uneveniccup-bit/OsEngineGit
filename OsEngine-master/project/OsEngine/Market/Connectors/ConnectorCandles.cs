@@ -478,8 +478,7 @@ namespace OsEngine.Market.Connectors
         {
             get
             {
-                if (ServerType == ServerType.Lmax ||
-                    ServerType == ServerType.Tester ||
+                if (ServerType == ServerType.Tester ||
                      ServerType == ServerType.Optimizer ||
                     ServerType == ServerType.BitMex)
                 {
@@ -878,11 +877,14 @@ namespace OsEngine.Market.Connectors
                         {
                             for (int i = 0; i < servers.Count; i++)
                             {
-                                if (servers[i].ServerType == ServerType
-                                    && servers[i].ServerNameAndPrefix.StartsWith(ServerFullName))
+                                if (servers[i].ServerType == ServerType)
                                 {
-                                    _myServer = servers[i];
-                                    break;
+                                    if(string.IsNullOrEmpty(ServerFullName) == true
+                                        || servers[i].ServerNameAndPrefix.StartsWith(ServerFullName))
+                                    {
+                                        _myServer = servers[i];
+                                        break;
+                                    }
                                 }
                                 else if (string.IsNullOrEmpty(ServerFullName) &&
                                     servers[i].ServerType == ServerType)
@@ -1512,6 +1514,8 @@ namespace OsEngine.Market.Connectors
                 _optionMarketData.Rho = data.Rho;
                 _optionMarketData.OpenInterest = data.OpenInterest;
                 _optionMarketData.TimeCreate = data.TimeCreate;
+
+                AdditionalDataEvent?.Invoke(_optionMarketData);
             }
             catch (Exception error)
             {
@@ -2020,6 +2024,11 @@ namespace OsEngine.Market.Connectors
         /// myTrade are changed
         /// </summary>
         public event Action<MyTrade> MyTradeEvent;
+
+        /// <summary>
+        /// new additional market data event
+        /// </summary>
+        public event Action<OptionMarketData> AdditionalDataEvent;
 
         /// <summary>
         /// new trade in the trades feed
