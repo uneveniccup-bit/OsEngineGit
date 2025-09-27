@@ -375,13 +375,13 @@ namespace OsEngine.OsTrader.Grids
 
         public TradeGridLogicEntryRegime RegimeLogicEntry;
 
-        public bool AutoClearJournalIsOn = true;
+        public bool AutoClearJournalIsOn = false;
 
-        public int MaxClosePositionsInJournal = 10000;
+        public int MaxClosePositionsInJournal = int.MaxValue;
 
-        public int MaxOpenOrdersInMarket = 5;
+        public int MaxOpenOrdersInMarket = 10;
 
-        public int MaxCloseOrdersInMarket = 5;
+        public int MaxCloseOrdersInMarket = 10;
 
         public int DelayInReal = 500;
 
